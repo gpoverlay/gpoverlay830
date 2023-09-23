@@ -4,6 +4,14 @@
 EAPI=7
 GIT_COMMIT=0065cff7e0222c234b75a71e72b8883df5d000c2
 
+# Upstream don't make releases anymore and instead have a (broken) "rolling git tag"
+# model.
+#
+# https://github.com/LuaJIT/LuaJIT/issues/665#issuecomment-784452583
+# https://www.freelists.org/post/luajit/LuaJIT-uses-rolling-releases
+#
+# Regular snapshots should be made from the v2.1 branch.
+
 inherit pax-utils toolchain-funcs
 
 MY_PV="$(ver_cut 1-5)"
@@ -12,7 +20,7 @@ MY_P="LuaJIT-${MY_PV}"
 
 DESCRIPTION="Just-In-Time Compiler for the Lua programming language"
 HOMEPAGE="https://luajit.org/"
-SRC_URI="https://luajit.org/download/${MY_P}.tar.gz"
+# SRC_URI="https://luajit.org/download/${MY_P}.tar.gz"
 SRC_URI="https://github.com/LuaJIT/LuaJIT/archive/${GIT_COMMIT}.tar.gz -> ${P}.tar.gz"
 
 LICENSE="MIT"

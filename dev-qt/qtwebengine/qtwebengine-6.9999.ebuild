@@ -12,7 +12,7 @@ inherit prefix python-any-r1 qt6-build toolchain-funcs
 
 DESCRIPTION="Library for rendering dynamic web content in Qt6 C++ and QML applications"
 SRC_URI+="
-	https://dev.gentoo.org/~ionen/distfiles/${PN}-6.5-patchset-1.tar.xz
+	https://dev.gentoo.org/~ionen/distfiles/${PN}-6.6-patchset-1.tar.xz
 "
 
 if [[ ${QT6_BUILD_TYPE} == release ]]; then
@@ -20,14 +20,15 @@ if [[ ${QT6_BUILD_TYPE} == release ]]; then
 fi
 
 IUSE="
-	+alsa bindist custom-cflags designer geolocation +jumbo-build kerberos
-	opengl pdf pulseaudio qml screencast +system-icu vulkan +widgets
+	+alsa bindist custom-cflags designer geolocation +jumbo-build
+	kerberos opengl pdfium pulseaudio qml screencast +system-icu
+	vaapi vulkan +widgets
 "
 REQUIRED_USE="
 	designer? ( qml widgets )
 "
 
-# dlopen: krb5, pciutils, udev
+# dlopen: krb5, libva, pciutils, udev
 RDEPEND="
 	app-arch/snappy:=
 	dev-libs/expat
@@ -44,10 +45,10 @@ RDEPEND="
 	media-libs/lcms:2
 	media-libs/libjpeg-turbo:=
 	media-libs/libpng:=
-	media-libs/libvpx:=
 	media-libs/libwebp:=
 	media-libs/openjpeg:2=
 	media-libs/opus
+	media-libs/tiff:=
 	sys-apps/dbus
 	sys-apps/pciutils
 	sys-libs/zlib:=[minizip]
@@ -75,6 +76,12 @@ RDEPEND="
 		x11-libs/libdrm
 	)
 	system-icu? ( dev-libs/icu:= )
+	vaapi? (
+		media-libs/libva:=[X]
+		media-libs/mesa[gbm(+)]
+		x11-libs/libdrm
+	)
+	!vaapi? ( media-libs/libvpx:= )
 	widgets? ( ~dev-qt/qtdeclarative-${PV}:6[widgets] )
 "
 DEPEND="
@@ -83,7 +90,7 @@ DEPEND="
 	x11-base/xorg-proto
 	x11-libs/libxshmfence
 	screencast? ( media-libs/libepoxy[egl(+)] )
-	pdf? ( net-print/cups )
+	pdfium? ( net-print/cups )
 	test? (
 		widgets? ( app-text/poppler[cxx(+)] )
 	)
@@ -112,10 +119,12 @@ qtwebengine_check-reqs() {
 	[[ ${MERGE_TYPE} == binary ]] && return
 
 	if is-flagq '-g?(gdb)?([1-9])'; then #307861
-		ewarn "Used CFLAGS/CXXFLAGS seem to enable debug info (-g or -ggdb),"
-		ewarn "which is non-trivial with ${PN}. May experience extended"
-		ewarn "compilation times and increased disk/memory usage. If run into"
-		ewarn "issues, please disable before reporting a bug."
+		ewarn
+		ewarn "Used CFLAGS/CXXFLAGS seem to enable debug info (-g or -ggdb), which"
+		ewarn "is non-trivial with ${PN}. May experience extended compilation"
+		ewarn "times, increased disk/memory usage, and potentially link failure."
+		ewarn
+		ewarn "If run into issues, please try disabling before reporting a bug."
 	fi
 
 	local CHECKREQS_DISK_BUILD=7G
@@ -158,7 +167,7 @@ src_prepare() {
 
 src_configure() {
 	local mycmakeargs=(
-		$(qt_feature pdf qtpdf_build)
+		$(qt_feature pdfium qtpdf_build)
 		$(qt_feature qml qtpdf_quick_build)
 		$(qt_feature widgets qtpdf_widgets_build)
 
@@ -176,6 +185,7 @@ src_configure() {
 		$(qt_feature pulseaudio webengine_system_pulseaudio)
 		$(qt_feature screencast webengine_webrtc_pipewire)
 		$(qt_feature system-icu webengine_system_icu)
+		$(qt_feature vaapi webengine_vaapi)
 		$(qt_feature vulkan webengine_vulkan)
 		-DQT_FEATURE_webengine_embedded_build=OFF
 		-DQT_FEATURE_webengine_extensions=ON
@@ -194,11 +204,14 @@ src_configure() {
 		# (see discussions in https://github.com/gentoo/gentoo/pull/32281)
 		-DQT_FEATURE_webengine_system_re2=OFF
 
+		# bundled is currently required when using vaapi (forced regardless)
+		$(qt_feature !vaapi webengine_system_libvpx)
+
 		# not necessary to pass these (default), but in case detection fails
 		$(printf -- '-DQT_FEATURE_webengine_system_%s=ON ' \
 			freetype glib harfbuzz lcms2 libevent libjpeg \
-			libopenjpeg2 libpci libpng libvpx libwebp libxml \
-			minizip opus poppler snappy zlib)
+			libopenjpeg2 libpci libpng libtiff libwebp \
+			libxml minizip opus poppler snappy zlib)
 
 		# TODO: fixup gn cross, or package dev-qt/qtwebengine-gn with =ON
 		-DINSTALL_GN=OFF
@@ -210,7 +223,14 @@ src_configure() {
 		rtc_link_pipewire=true
 	)
 
-	use custom-cflags || strip-flags # fragile
+	if use !custom-cflags; then
+		strip-flags # fragile
+
+		if is-flagq '-g?(gdb)?([2-9])'; then #914475
+			replace-flags '-g?(gdb)?([2-9])' -g1
+			ewarn "-g2+/-ggdb* *FLAGS replaced with -g1 (enable USE=custom-cflags to keep)"
+		fi
+	fi
 
 	export NINJA NINJAFLAGS=$(get_NINJAOPTS)
 	[[ ${NINJA_VERBOSE^^} == OFF ]] || NINJAFLAGS+=" -v"

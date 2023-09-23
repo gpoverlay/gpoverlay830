@@ -1,9 +1,9 @@
-# Copyright 1999-2020 Gentoo Authors
+# Copyright 1999-2023 Gentoo Authors
 # Distributed under the terms of the GNU General Public License v2
 
-EAPI=7
+EAPI=8
 
-inherit cmake-utils
+inherit cmake
 
 if [[ ${PV} == *9999 ]]; then
 	inherit git-r3
@@ -25,16 +25,14 @@ SLOT="1"
 IUSE="test"
 RESTRICT="!test? ( test )"
 
-RDEPEND="!<dev-cpp/catch-1.12.2:0"
-
 src_configure() {
 	local mycmakeargs=(
 		-DNO_SELFTEST=$(usex !test)
 	)
-	cmake-utils_src_configure
+	cmake_src_configure
 }
 
 src_install() {
-	cmake-utils_src_install
+	cmake_src_install
 	dodoc -r docs/.
 }

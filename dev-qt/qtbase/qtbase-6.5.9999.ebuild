@@ -13,7 +13,7 @@ fi
 
 declare -A QT6_IUSE=(
 	[global]="+ssl +udev zstd"
-	[core]="icu systemd"
+	[core]="icu"
 	[modules]="+concurrent +dbus +gui +network +sql +xml"
 
 	[gui]="
@@ -36,6 +36,7 @@ REQUIRED_USE="
 	)
 	accessibility? ( X dbus )
 	eglfs? ( opengl )
+	gles2-only? ( opengl )
 	gui? ( || ( X eglfs wayland ) )
 	libinput? ( udev )
 	sql? ( || ( ${QT6_IUSE[sql]//+/} ) )
@@ -60,7 +61,6 @@ RDEPEND="
 	dev-libs/glib:2
 	dev-libs/libpcre2:=[pcre16,unicode(+)]
 	icu? ( dev-libs/icu:= )
-	systemd? ( sys-apps/systemd:= )
 
 	dbus? ( sys-apps/dbus )
 	gui? (
@@ -129,6 +129,11 @@ PDEPEND="
 	wayland? ( ~dev-qt/qtwayland-${PV}:6 )
 "
 
+PATCHES=(
+	"${FILESDIR}"/${PN}-6.5.2-hppa-forkfd-grow-stack.patch
+	"${FILESDIR}"/${PN}-6.5.2-no-symlink-check.patch
+)
+
 src_prepare() {
 	qt6-build_src_prepare
 
@@ -141,6 +146,8 @@ src_prepare() {
 
 src_configure() {
 	local mycmakeargs=(
+		-DBUILD_WITH_PCH=OFF
+
 		-DINSTALL_ARCHDATADIR="${QT6_ARCHDATADIR}"
 		-DINSTALL_BINDIR="${QT6_BINDIR}"
 		-DINSTALL_DATADIR="${QT6_DATADIR}"
@@ -155,7 +162,6 @@ src_configure() {
 		-DINSTALL_SYSCONFDIR="${QT6_SYSCONFDIR}"
 		-DINSTALL_TRANSLATIONSDIR="${QT6_TRANSLATIONDIR}"
 
-		-DQT_FEATURE_precompile_header=OFF
 		$(qt_feature ssl openssl)
 		$(qt_feature ssl openssl_linked)
 		$(qt_feature udev libudev)
@@ -163,7 +169,6 @@ src_configure() {
 
 		# qtcore
 		$(qt_feature icu)
-		$(qt_feature systemd journald)
 
 		# tools
 		-DQT_FEATURE_androiddeployqt=OFF
@@ -187,13 +192,11 @@ src_configure() {
 		$(qt_feature eglfs)
 		$(qt_feature evdev)
 		$(qt_feature evdev mtdev)
-		$(qt_feature gles2-only opengles2)
-		$(usev !opengl -DINPUT_opengl=no) #913691
 		$(qt_feature libinput)
-		$(qt_feature opengl)
 		$(qt_feature tslib)
 		$(qt_feature vulkan)
 		$(qt_feature widgets)
+		-DINPUT_opengl=$(usex opengl $(usex gles2-only es2 desktop) no)
 		-DQT_FEATURE_system_textmarkdownreader=OFF # TODO?: package md4c
 	) && use widgets && mycmakeargs+=(
 		$(qt_feature cups) # qtprintsupport is enabled w/ gui+widgets
@@ -292,14 +295,25 @@ src_test() {
 		tst_qglyphrun
 		tst_qvectornd
 		tst_rcc
+		# similarly, but on armv7 and potentially others (bug #914028)
+		tst_qlineedit
+		tst_qpainter
+		# likewise, known failing at least on BE arches (bug #914033,914371)
+		tst_qimagereader
+		tst_qimagewriter
+		tst_qpluginloader
 		# partially broken on llvm-musl, needs looking into but skip to have
-		# a baseline for regressions (like above, rest of dev-qt is fine)
+		# a baseline for regressions (rest of dev-qt still passes with musl)
 		$(usev elibc_musl '
 			tst_qfiledialog2
 			tst_qicoimageformat
 			tst_qimagereader
-			tst_qpainter
 			tst_qimage
+		')
+		# fails due to hppa's NaN handling, needs looking into (bug #914371)
+		$(usev hppa '
+			tst_qcborvalue
+			tst_qnumeric
 		')
 		# note: for linux, upstream only really runs+maintains tests for amd64
 		# https://doc.qt.io/qt-6/supported-platforms.html
